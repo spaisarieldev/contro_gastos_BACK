@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model GananciaDiaria {
+  id    Int      @id @default(autoincrement())
+  fecha DateTime @unique @db.Date
+  monto Decimal  @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TipoGasto {
+  MENSUAL
+  UNICO
+}
+
+model Gasto {
+  id          Int       @id @default(autoincrement())
+  descripcion String
+  monto       Decimal   @db.Decimal(12, 2)
+  tipo        TipoGasto
+  fecha       DateTime  @db.Date
+  pagado      Boolean   @default(false)
+  activo      Boolean   @default(true)
+
+  /// Agrupa instancias mensuales del mismo gasto fijo a lo largo de los meses
+  plantillaKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo, fecha])
+  @@index([plantillaKey, fecha])
+}
