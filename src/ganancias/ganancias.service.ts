@@ -38,6 +38,7 @@ export class GananciasService {
         fecha: fechaStr,
         id: registro?.id ?? null,
         monto: registro ? Number(registro.monto) : null,
+        viajes: registro?.viajes ?? null,
       });
     }
 
@@ -57,15 +58,21 @@ export class GananciasService {
 
   async upsert(dto: UpsertGananciaDto) {
     const fecha = this.parseFechaUTC(dto.fecha);
+    const viajes =
+      dto.viajes === undefined || dto.viajes === null
+        ? null
+        : Math.floor(dto.viajes);
 
     const registro = await this.prisma.gananciaDiaria.upsert({
       where: { fecha },
       create: {
         fecha,
         monto: new Prisma.Decimal(dto.monto),
+        viajes,
       },
       update: {
         monto: new Prisma.Decimal(dto.monto),
+        viajes,
       },
     });
 
@@ -73,6 +80,7 @@ export class GananciasService {
       id: registro.id,
       fecha: registro.fecha.toISOString().slice(0, 10),
       monto: Number(registro.monto),
+      viajes: registro.viajes,
     };
   }
 

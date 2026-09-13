@@ -8,9 +8,10 @@ datasource db {
 }
 
 model GananciaDiaria {
-  id    Int      @id @default(autoincrement())
-  fecha DateTime @unique @db.Date
-  monto Decimal  @db.Decimal(12, 2)
+  id     Int      @id @default(autoincrement())
+  fecha  DateTime @unique @db.Date
+  monto  Decimal  @db.Decimal(12, 2)
+  viajes Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
