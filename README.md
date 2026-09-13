@@ -91,10 +91,13 @@ La API queda en `http://localhost:3000`.
 
 ### Resumen (`/resumen`)
 
+Lógica: **ganancias del mes M** vs **gastos del mes M+1**
+(lo ganado en septiembre cubre los gastos de octubre).
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/resumen/mes?anio=&mes=` | Totales + evolución diaria |
-| GET | `/resumen/evolucion-mensual?meses=12` | Comparativa mes a mes |
+| GET | `/resumen/mes?anio=&mes=` | Totales + evolución diaria + falta/sobrante |
+| GET | `/resumen/evolucion-mensual?meses=12` | Comparativa mes a mes (ganado vs gastos del siguiente) |
 
 ---
 
