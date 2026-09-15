@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TipoGasto } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GastosService } from '../gastos/gastos.service';
 
@@ -32,15 +33,33 @@ export class ResumenService {
     return { ganancias, total };
   }
 
-  private async totalGastosMes(anio: number, mes: number) {
-    // Genera mensuales del mes de gastos si aún no existen
+  /**
+   * Cuentas del mes a cubrir (MENSUAL + UNICO). No incluye DIARIO.
+   */
+  private async totalGastosFijosMes(anio: number, mes: number) {
     await this.gastosService.generarMensualesSiFaltan(anio, mes);
 
     const { inicio, fin } = this.rangoMes(anio, mes);
     const gastos = await this.prisma.gasto.findMany({
       where: {
         fecha: { gte: inicio, lte: fin },
-        OR: [{ tipo: 'UNICO' }, { tipo: 'MENSUAL', activo: true }],
+        OR: [
+          { tipo: TipoGasto.UNICO },
+          { tipo: TipoGasto.MENSUAL, activo: true },
+        ],
+      },
+    });
+    const total = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    return { gastos, total };
+  }
+
+  /** Gastos del día a día del mes (salen de lo ganado ese mismo mes). */
+  private async totalGastosDiariosMes(anio: number, mes: number) {
+    const { inicio, fin } = this.rangoMes(anio, mes);
+    const gastos = await this.prisma.gasto.findMany({
+      where: {
+        fecha: { gte: inicio, lte: fin },
+        tipo: TipoGasto.DIARIO,
       },
     });
     const total = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
@@ -49,18 +68,24 @@ export class ResumenService {
 
   /**
    * Lógica de negocio:
-   * Lo ganado en el mes M cubre los gastos del mes M+1.
-   * "Cuánto falta" = ganancias(M) - gastos(M+1).
+   * Lo ganado en el mes M (menos gastos diarios de M) cubre los gastos
+   * fijos del mes M+1.
+   * disponible = ganancias(M) - diarios(M)
+   * "Cuánto falta" = disponible - gastosFijos(M+1)
    */
   async resumenMes(anio: number, mes: number) {
     const gastosMes = this.mesSiguiente(anio, mes);
     const { diasEnMes } = this.rangoMes(anio, mes);
 
-    const [{ ganancias, total: totalGanancias }, { total: totalGastos }] =
-      await Promise.all([
-        this.totalGananciasMes(anio, mes),
-        this.totalGastosMes(gastosMes.anio, gastosMes.mes),
-      ]);
+    const [
+      { ganancias, total: totalGanancias },
+      { total: totalGastos },
+      { total: totalGastosDiarios },
+    ] = await Promise.all([
+      this.totalGananciasMes(anio, mes),
+      this.totalGastosFijosMes(gastosMes.anio, gastosMes.mes),
+      this.totalGastosDiariosMes(anio, mes),
+    ]);
 
     const porDia = new Map(
       ganancias.map((g) => [
@@ -79,8 +104,8 @@ export class ResumenService {
       });
     }
 
-    const balanceNeto = totalGanancias - totalGastos;
-    // Si es negativo, falta ganar esa diferencia; si es positivo, sobra
+    const disponible = totalGanancias - totalGastosDiarios;
+    const balanceNeto = disponible - totalGastos;
     const faltaCubrir = balanceNeto < 0 ? Math.abs(balanceNeto) : 0;
     const sobrante = balanceNeto > 0 ? balanceNeto : 0;
 
@@ -90,6 +115,8 @@ export class ResumenService {
       anioGastos: gastosMes.anio,
       mesGastos: gastosMes.mes,
       totalGanancias,
+      totalGastosDiarios,
+      disponible,
       totalGastos,
       balanceNeto,
       faltaCubrir,
@@ -99,7 +126,7 @@ export class ResumenService {
   }
 
   /**
-   * Cada punto: ganancias del mes M vs gastos del mes M+1.
+   * Cada punto: disponible del mes M (ganancias - diarios) vs gastos fijos M+1.
    */
   async evolucionMensual(cantidadMeses = 12) {
     const ahora = new Date();
@@ -113,13 +140,18 @@ export class ResumenService {
       const mes = fecha.getUTCMonth() + 1;
       const gastosMes = this.mesSiguiente(anio, mes);
 
-      const [{ total: totalGanancias }, { total: totalGastos }] =
-        await Promise.all([
-          this.totalGananciasMes(anio, mes),
-          this.totalGastosMes(gastosMes.anio, gastosMes.mes),
-        ]);
+      const [
+        { total: totalGanancias },
+        { total: totalGastos },
+        { total: totalGastosDiarios },
+      ] = await Promise.all([
+        this.totalGananciasMes(anio, mes),
+        this.totalGastosFijosMes(gastosMes.anio, gastosMes.mes),
+        this.totalGastosDiariosMes(anio, mes),
+      ]);
 
-      const balanceNeto = totalGanancias - totalGastos;
+      const disponible = totalGanancias - totalGastosDiarios;
+      const balanceNeto = disponible - totalGastos;
 
       resultado.push({
         anio,
@@ -129,6 +161,8 @@ export class ResumenService {
         etiqueta: `${anio}-${String(mes).padStart(2, '0')}`,
         etiquetaGastos: `${gastosMes.anio}-${String(gastosMes.mes).padStart(2, '0')}`,
         totalGanancias,
+        totalGastosDiarios,
+        disponible,
         totalGastos,
         balanceNeto,
         faltaCubrir: balanceNeto < 0 ? Math.abs(balanceNeto) : 0,

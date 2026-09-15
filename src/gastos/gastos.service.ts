@@ -51,16 +51,22 @@ export class GastosService {
         fecha: { gte: inicio, lte: fin },
         OR: [
           { tipo: TipoGasto.UNICO },
+          { tipo: TipoGasto.DIARIO },
           { tipo: TipoGasto.MENSUAL, activo: true },
         ],
       },
       orderBy: [{ tipo: 'asc' }, { fecha: 'asc' }, { id: 'asc' }],
     });
 
-    const total = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-    const totalPagado = gastos
+    // total / pagado / pendiente = cuentas del mes (MENSUAL + UNICO)
+    const fijos = gastos.filter((g) => g.tipo !== TipoGasto.DIARIO);
+    const diarios = gastos.filter((g) => g.tipo === TipoGasto.DIARIO);
+
+    const total = fijos.reduce((acc, g) => acc + Number(g.monto), 0);
+    const totalPagado = fijos
       .filter((g) => g.pagado)
       .reduce((acc, g) => acc + Number(g.monto), 0);
+    const totalDiarios = diarios.reduce((acc, g) => acc + Number(g.monto), 0);
 
     return {
       anio,
@@ -68,6 +74,7 @@ export class GastosService {
       total,
       totalPagado,
       totalPendiente: total - totalPagado,
+      totalDiarios,
       gastos: gastos.map((g) => this.mapGasto(g)),
     };
   }
@@ -77,13 +84,17 @@ export class GastosService {
     const plantillaKey =
       dto.tipo === TipoGasto.MENSUAL ? randomUUID() : null;
 
+    // Los diarios ya salieron del bolsillo al cargarlos
+    const pagadoDefault =
+      dto.tipo === TipoGasto.DIARIO ? true : false;
+
     const gasto = await this.prisma.gasto.create({
       data: {
         descripcion: dto.descripcion,
         monto: new Prisma.Decimal(dto.monto),
         tipo: dto.tipo,
         fecha,
-        pagado: dto.pagado ?? false,
+        pagado: dto.pagado ?? pagadoDefault,
         activo: dto.activo ?? true,
         plantillaKey,
       },
