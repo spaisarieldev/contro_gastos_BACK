@@ -20,6 +20,7 @@ model GananciaDiaria {
 enum TipoGasto {
   MENSUAL
   UNICO
+  DIARIO
 }
 
 model Gasto {
