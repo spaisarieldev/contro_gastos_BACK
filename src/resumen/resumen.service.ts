@@ -33,16 +33,6 @@ export class ResumenService {
     return { ganancias, total };
   }
 
-  private async totalGananciasDidiMes(anio: number, mes: number) {
-    const { inicio, fin } = this.rangoMes(anio, mes);
-    const ganancias = await this.prisma.gananciaDidiDiaria.findMany({
-      where: { fecha: { gte: inicio, lte: fin } },
-      orderBy: { fecha: 'asc' },
-    });
-    const total = ganancias.reduce((acc, g) => acc + Number(g.monto), 0);
-    return { ganancias, total };
-  }
-
   /**
    * Cuentas del mes a cubrir (MENSUAL + UNICO). No incluye DIARIO.
    */
@@ -77,8 +67,7 @@ export class ResumenService {
   }
 
   /**
-   * Lógica de negocio:
-   * Lo ganado en el mes M (Uber + DiDi, menos gastos diarios de M) cubre
+   * Lo ganado en el mes M (Uber, menos gastos diarios de M) cubre
    * los gastos fijos del mes M+1.
    */
   async resumenMes(anio: number, mes: number) {
@@ -87,12 +76,10 @@ export class ResumenService {
 
     const [
       { ganancias: gananciasUber, total: totalGananciasUber },
-      { ganancias: gananciasDidi, total: totalGananciasDidi },
       { total: totalGastos },
       { total: totalGastosDiarios },
     ] = await Promise.all([
       this.totalGananciasUberMes(anio, mes),
-      this.totalGananciasDidiMes(anio, mes),
       this.totalGastosFijosMes(gastosMes.anio, gastosMes.mes),
       this.totalGastosDiariosMes(anio, mes),
     ]);
@@ -103,28 +90,20 @@ export class ResumenService {
         Number(g.monto),
       ]),
     );
-    const porDiaDidi = new Map(
-      gananciasDidi.map((g) => [
-        g.fecha.toISOString().slice(0, 10),
-        Number(g.monto),
-      ]),
-    );
 
     const evolucionDiaria = [];
     for (let dia = 1; dia <= diasEnMes; dia++) {
       const fecha = `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
       const montoUber = porDiaUber.get(fecha) ?? 0;
-      const montoDidi = porDiaDidi.get(fecha) ?? 0;
       evolucionDiaria.push({
         dia,
         fecha,
         montoUber,
-        montoDidi,
-        monto: montoUber + montoDidi,
+        monto: montoUber,
       });
     }
 
-    const totalGanancias = totalGananciasUber + totalGananciasDidi;
+    const totalGanancias = totalGananciasUber;
     const disponible = totalGanancias - totalGastosDiarios;
     const balanceNeto = disponible - totalGastos;
     const faltaCubrir = balanceNeto < 0 ? Math.abs(balanceNeto) : 0;
@@ -136,7 +115,6 @@ export class ResumenService {
       anioGastos: gastosMes.anio,
       mesGastos: gastosMes.mes,
       totalGananciasUber,
-      totalGananciasDidi,
       totalGanancias,
       totalGastosDiarios,
       disponible,
@@ -149,7 +127,7 @@ export class ResumenService {
   }
 
   /**
-   * Cada punto: disponible del mes M (Uber+DiDi - diarios) vs gastos fijos M+1.
+   * Cada punto: disponible del mes M (Uber - diarios) vs gastos fijos M+1.
    */
   async evolucionMensual(cantidadMeses = 12) {
     const ahora = new Date();
@@ -165,17 +143,15 @@ export class ResumenService {
 
       const [
         { total: totalGananciasUber },
-        { total: totalGananciasDidi },
         { total: totalGastos },
         { total: totalGastosDiarios },
       ] = await Promise.all([
         this.totalGananciasUberMes(anio, mes),
-        this.totalGananciasDidiMes(anio, mes),
         this.totalGastosFijosMes(gastosMes.anio, gastosMes.mes),
         this.totalGastosDiariosMes(anio, mes),
       ]);
 
-      const totalGanancias = totalGananciasUber + totalGananciasDidi;
+      const totalGanancias = totalGananciasUber;
       const disponible = totalGanancias - totalGastosDiarios;
       const balanceNeto = disponible - totalGastos;
 
@@ -187,7 +163,6 @@ export class ResumenService {
         etiqueta: `${anio}-${String(mes).padStart(2, '0')}`,
         etiquetaGastos: `${gastosMes.anio}-${String(gastosMes.mes).padStart(2, '0')}`,
         totalGananciasUber,
-        totalGananciasDidi,
         totalGanancias,
         totalGastosDiarios,
         disponible,
