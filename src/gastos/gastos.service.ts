@@ -39,23 +39,6 @@ export class GastosService {
     return new Date(Date.UTC(y, m - 1, d));
   }
 
-  private mesAnterior(anio: number, mes: number) {
-    if (mes === 1) {
-      return { anio: anio - 1, mes: 12 };
-    }
-    return { anio, mes: mes - 1 };
-  }
-
-  /** Suma de ganancias Uber del mes (lo juntado). */
-  private async totalJuntadoMes(anio: number, mes: number) {
-    const inicio = new Date(Date.UTC(anio, mes - 1, 1));
-    const fin = new Date(Date.UTC(anio, mes, 0));
-    const ganancias = await this.prisma.gananciaDiaria.findMany({
-      where: { fecha: { gte: inicio, lte: fin } },
-    });
-    return ganancias.reduce((acc, g) => acc + Number(g.monto), 0);
-  }
-
   async listarMes(anio: number, mes: number) {
     // Al entrar a la sección, aseguranos que existan los mensuales del mes
     await this.generarMensualesSiFaltan(anio, mes);
@@ -85,15 +68,12 @@ export class GastosService {
       .reduce((acc, g) => acc + Number(g.monto), 0);
     const totalDiarios = diarios.reduce((acc, g) => acc + Number(g.monto), 0);
 
-    const anterior = this.mesAnterior(anio, mes);
-    const totalJuntadoAnterior = await this.totalJuntadoMes(
-      anterior.anio,
-      anterior.mes,
-    );
+    const totalLista = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    const pagadoLista = gastos
+      .filter((g) => g.pagado)
+      .reduce((acc, g) => acc + Number(g.monto), 0);
     const porcentajePagado =
-      totalJuntadoAnterior <= 0
-        ? 0
-        : (totalPagado / totalJuntadoAnterior) * 100;
+      totalLista <= 0 ? 0 : (pagadoLista / totalLista) * 100;
 
     return {
       anio,
@@ -102,7 +82,6 @@ export class GastosService {
       totalPagado,
       totalPendiente: total - totalPagado,
       totalDiarios,
-      totalJuntadoAnterior,
       porcentajePagado,
       gastos: gastos.map((g) => this.mapGasto(g)),
     };
